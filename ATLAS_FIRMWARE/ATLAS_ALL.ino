@@ -1,26 +1,4 @@
-﻿// =============================================================
-//  ATLAS_ALL.ino  -  SINGLE ESP32, TWO L298N drivers
-//
-//  L298N #1 -> Drive motors (left + right wheels)
-//  L298N #2 -> Head (Pan motor + Gun motor)
-//
-//  Auto-stop is toggled at runtime via POST /autostop {"enabled":true|false}
-//  Sensors always report to dashboard regardless of auto-stop state.
-//
-//  PIN MAP:
-//  -- Drive L298N #1 --
-//    MOTOR_EN=12 (bridge ENA+ENB), IN1=13, IN2=15, IN3=14, IN4=27
-//  -- Head L298N #2 --
-//    PAN_ENA=25, PAN_IN1=16, PAN_IN2=17
-//    GUN_ENB=4,  GUN_IN4=2   (single direction pin)
-//  -- Ultrasonics --
-//    Front:       TRIG=5,  ECHO=18
-//    Front-Left:  TRIG=19, ECHO=21
-//    Front-Right: TRIG=22, ECHO=23
-//    Back:        TRIG=33, ECHO=32
-//    Down:        TRIG=26, ECHO=34
-// =============================================================
-
+﻿
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <AsyncTCP.h>
@@ -52,8 +30,6 @@ const char *password = "1234567890@@";
 #define US_FRONT_LEFT_ECHO 21
 #define US_FRONT_RIGHT_TRIG 22
 #define US_FRONT_RIGHT_ECHO 23
-#define US_BACK_TRIG 33
-#define US_BACK_ECHO 32
 #define US_DOWN_TRIG 26
 #define US_DOWN_ECHO 34
 
@@ -73,11 +49,10 @@ struct UltrasonicSensor {
   String name;
 };
 
-UltrasonicSensor sensors[5] = {
+UltrasonicSensor sensors[4] = {
     {US_FRONT_TRIG, US_FRONT_ECHO, 999.9, "front"},
     {US_FRONT_LEFT_TRIG, US_FRONT_LEFT_ECHO, 999.9, "front_left"},
     {US_FRONT_RIGHT_TRIG, US_FRONT_RIGHT_ECHO, 999.9, "front_right"},
-    {US_BACK_TRIG, US_BACK_ECHO, 999.9, "back"},
     {US_DOWN_TRIG, US_DOWN_ECHO, 999.9, "down"}};
 
 // ==================== CONTROL STATE ====================
@@ -87,6 +62,8 @@ int panSpeed = 200;
 int gunSpeed = 255;
 bool autoStopEnabled = true; // Runtime toggle from dashboard
 unsigned long lastSensorRead = 0;
+unsigned long lastReconnectAttempt = 0;
+const unsigned long RECONNECT_INTERVAL = 10000; // 10s between reconnect attempts
 
 // =======================================================
 //  DRIVE MOTOR FUNCTIONS
@@ -189,44 +166,48 @@ void setUpHeadPins() {
 //  ULTRASONIC
 // =======================================================
 void setupUltrasonic() {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 4; i++) {
     pinMode(sensors[i].trigPin, OUTPUT);
     pinMode(sensors[i].echoPin, INPUT);
   }
 }
 
 float readDistance(int trigPin, int echoPin) {
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  long duration = pulseIn(echoPin, HIGH, 30000);
-  if (duration == 0)
-    return 999.9;
-  return duration * 0.034 / 2.0;
+  // Try up to 2 readings for reliability (GPIO 34-39 can be flaky)
+  for (int attempt = 0; attempt < 2; attempt++) {
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    long duration = pulseIn(echoPin, HIGH, 30000);
+    if (duration > 0)
+      return duration * 0.034 / 2.0;
+  }
+  return 999.9;
 }
 
 void updateSensors() {
-  for (int i = 0; i < 5; i++)
+  for (int i = 0; i < 4; i++)
     sensors[i].distance = readDistance(sensors[i].trigPin, sensors[i].echoPin);
 }
 
 bool isPathClear(const String &direction) {
-  if (sensors[4].distance > POTHOLE_THRESHOLD_CM)
+  // Down sensor: detect potholes (ground too far away)
+  // Ignore if sensor reads 999.9 (timeout/disconnected)
+  float downDist = sensors[3].distance;
+  if (downDist < 500 && downDist > POTHOLE_THRESHOLD_CM)
     return false;
   if (direction == "forward")
     return sensors[0].distance > OBSTACLE_THRESHOLD_CM &&
            sensors[1].distance > OBSTACLE_THRESHOLD_CM &&
            sensors[2].distance > OBSTACLE_THRESHOLD_CM;
   if (direction == "backward")
-    return sensors[3].distance > OBSTACLE_THRESHOLD_CM;
+    return true;
   if (direction == "left")
-    return sensors[1].distance > OBSTACLE_THRESHOLD_CM &&
-           sensors[3].distance > OBSTACLE_THRESHOLD_CM;
+    return sensors[1].distance > OBSTACLE_THRESHOLD_CM;
   if (direction == "right")
-    return sensors[2].distance > OBSTACLE_THRESHOLD_CM &&
-           sensors[3].distance > OBSTACLE_THRESHOLD_CM;
+    return sensors[2].distance > OBSTACLE_THRESHOLD_CM;
   return true;
 }
 
@@ -236,7 +217,7 @@ bool isPathClear(const String &direction) {
 void handleGetStatus(AsyncWebServerRequest *request) {
   StaticJsonDocument<1024> doc;
   JsonArray sensorArray = doc.createNestedArray("ultrasonic");
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 4; i++) {
     JsonObject s = sensorArray.createNestedObject();
     s["name"] = sensors[i].name;
     s["distance"] = sensors[i].distance;
@@ -352,6 +333,20 @@ void setup() {
   setupUltrasonic();
 
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    Serial.println("WiFi disconnected. Attempting reconnect...");
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
+  }, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    Serial.print("WiFi reconnected! IP: ");
+    Serial.println(WiFi.localIP());
+  }, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
+
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi: ");
   Serial.println(ssid);
@@ -439,8 +434,14 @@ void setup() {
 // =======================================================
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
-    WiFi.reconnect();
-    delay(5000);
+    unsigned long now = millis();
+    if (now - lastReconnectAttempt >= RECONNECT_INTERVAL) {
+      lastReconnectAttempt = now;
+      Serial.println("WiFi lost. Reconnecting...");
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+    }
+    delay(100);
     return;
   }
   unsigned long now = millis();

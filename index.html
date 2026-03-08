@@ -579,8 +579,7 @@
         #radar-front-left.obstacle,
         #radar-front-right.obstacle,
         #radar-left.obstacle,
-        #radar-right.obstacle,
-        #radar-back.obstacle {
+        #radar-right.obstacle {
             animation: radar-pulse 0.5s ease-in-out infinite;
         }
 
@@ -1441,10 +1440,6 @@
                                     <circle id="radar-front-right" cx="80" cy="15" r="5" fill="rgba(34,197,94,0.3)"
                                         stroke="rgb(34,197,94)" stroke-width="1" />
 
-                                    <!-- BACK Sensor (1) - Centered -->
-                                    <circle id="radar-back" cx="50" cy="85" r="6" fill="rgba(34,197,94,0.3)"
-                                        stroke="rgb(34,197,94)" stroke-width="1.5" />
-
                                     <!-- DOWN Sensor (1) - Under Rover -->
                                     <circle id="radar-down" cx="50" cy="50" r="10" fill="none"
                                         stroke="rgba(100,100,255,0.5)" stroke-width="2" stroke-dasharray="2,2" />
@@ -1454,8 +1449,7 @@
                                     <!-- Labels -->
                                     <text x="50" y="3" text-anchor="middle" fill="rgba(255,255,255,0.4)"
                                         font-size="4">FRONT</text>
-                                    <text x="50" y="99" text-anchor="middle" fill="rgba(255,255,255,0.4)"
-                                        font-size="4">BACK</text>
+
                                 </svg>
 
                                 <!-- Distance labels overlay -->
@@ -1465,9 +1459,7 @@
                                 </div>
                                 <div class="absolute top-4 right-1 text-[6px] text-white/40" id="dist-front-right">--
                                 </div>
-                                <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-[7px] text-white/50"
-                                    id="dist-back">--
-                                </div>
+
                                 <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 mt-3 text-[6px] text-blue-300/80"
                                     id="dist-down">--
                                 </div>
@@ -4210,12 +4202,11 @@
             const WARNING_THRESHOLD = 60; // cm - yellow zone
             const MAX_DISTANCE = 200;     // cm - max sensor range
 
-            // Map sensor names to radar element IDs (5 sensors: 3 front, 1 back, 1 down)
+            // Map sensor names to radar element IDs (4 sensors: 3 front, 1 down)
             const sensorMap = {
                 'front': 'radar-front',
                 'front_left': 'radar-front-left',
                 'front_right': 'radar-front-right',
-                'back': 'radar-back',
                 'down': 'radar-down'
             };
 
@@ -4224,7 +4215,6 @@
                 'front': 'dist-front',
                 'front_left': 'dist-front-left',
                 'front_right': 'dist-front-right',
-                'back': 'dist-back',
                 'down': 'dist-down'
             };
 
