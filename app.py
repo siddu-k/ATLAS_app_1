@@ -78,7 +78,7 @@ if not os.path.exists(target_dir):
 alert_active = False
 detected_target = None
 alert_last_seen = 0  # Timestamp of last detection
-ALERT_PERSIST_SECONDS = 3  # Keep alert active for 3 seconds after last detection
+ALERT_PERSIST_SECONDS = 8  # Keep alert active for 8 seconds after last detection
 target_lock = threading.Lock()
 
 # --- MiDaS Model Setup ---
@@ -93,7 +93,7 @@ class MidasSmall:
         self.midas.eval()
         
         # Load transforms
-        midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+        midas_transforms = torch.hub.load("isl-org/MiDaS", "transforms")
         self.transform = midas_transforms.small_transform
 
     def predict(self, frame):
@@ -119,9 +119,9 @@ class MidasSmall:
         
         return depth_map
     
-    def predict_raw(self, frame):
-        """Return raw normalized depth values (0-255) without colormap"""
-        small_frame = cv2.resize(frame, (320, 240)) 
+    def predict_both(self, frame):
+        """Run model once, return (colored_depth, raw_gray_depth)"""
+        small_frame = cv2.resize(frame, (320, 240))
         img = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
         input_batch = self.transform(img).to(self.device)
 
@@ -135,8 +135,14 @@ class MidasSmall:
             ).squeeze()
 
         depth_map = prediction.cpu().numpy()
-        depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        return depth_map
+        depth_gray = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        depth_colored = cv2.applyColorMap(depth_gray, cv2.COLORMAP_INFERNO)
+        return depth_colored, depth_gray
+
+    def predict_raw(self, frame):
+        """Return raw normalized depth values (0-255) without colormap"""
+        _, depth_gray = self.predict_both(frame)
+        return depth_gray
 
 # --- Obstacle Detection & Path Planning ---
 class ObstacleDetector:
@@ -344,9 +350,13 @@ class VideoStream:
         self.thread_read.daemon = True
         self.thread_read.start()
         
-        self.thread_process = threading.Thread(target=self.process_ai)
+        self.thread_process = threading.Thread(target=self.process_depth)
         self.thread_process.daemon = True
         self.thread_process.start()
+
+        self.thread_face = threading.Thread(target=self.process_faces)
+        self.thread_face.daemon = True
+        self.thread_face.start()
 
     def reconnect_stream(self, new_url):
         """Force reconnection to a new video stream URL"""
@@ -389,12 +399,9 @@ class VideoStream:
                      cap = cv2.VideoCapture(0)
             time.sleep(0.01)
 
-    def process_ai(self):
+    def process_depth(self):
         if self.model is None:
              self.model = MidasSmall()
-        
-        global alert_active, detected_target, alert_last_seen
-        frame_count = 0
 
         while self.running:
             frame_to_process = None
@@ -403,82 +410,10 @@ class VideoStream:
                     frame_to_process = self.current_frame.copy()
             
             if frame_to_process is not None:
-                # 1. Depth Estimation (colored for display)
-                depth_map = self.model.predict(frame_to_process)
+                depth_map, depth_gray = self.model.predict_both(frame_to_process)
                 
-                # 2. Raw depth for obstacle detection
-                depth_gray = self.model.predict_raw(frame_to_process)
-                
-                # 3. Obstacle Detection & Path Analysis
                 self.obstacle_detector.set_heading(self.rover_heading)
                 obstacle_analysis = self.obstacle_detector.analyze_depth(depth_gray)
-                
-                # 4. Face Recognition (DeepFace)
-                # Run every 3 frames for responsive detection
-                if frame_count % 3 == 0:
-                    try:
-                        # Only run if we have targets
-                        target_files = [f for f in os.listdir(target_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-                        if len(target_files) > 0:
-                            # Resize for faster detection
-                            small_frame = cv2.resize(frame_to_process, (0, 0), fx=0.5, fy=0.5)
-                            
-                            # Use VGG-Face model (more accurate)
-                            dfs = DeepFace.find(
-                                img_path=small_frame, 
-                                db_path=target_dir, 
-                                model_name="VGG-Face",
-                                enforce_detection=True,
-                                detector_backend="opencv",
-                                silent=True
-                            )
-                            
-                            found_targets = []
-                            current_locations = []
-                            
-                            for df in dfs:
-                                if not df.empty:
-                                    for index, row in df.iterrows():
-                                        identity = row['identity']
-                                        name = os.path.basename(identity).split('.')[0]
-                                        found_targets.append(name)
-                                        
-                                        # Scale coordinates back to original frame size
-                                        x = int(row['source_x'] * 2)
-                                        y = int(row['source_y'] * 2)
-                                        w = int(row['source_w'] * 2)
-                                        h = int(row['source_h'] * 2)
-                                        current_locations.append((x, y, w, h, name))
-                            
-                            with self.lock:
-                                if found_targets:
-                                    alert_active = True
-                                    detected_target = found_targets[0]
-                                    alert_last_seen = time.time()
-                                    self.face_locations = current_locations
-                                    self.face_names = found_targets
-                                    print(f"🎯 TARGET DETECTED: {found_targets}")
-                                else:
-                                    # Only clear alert if expired (persist for ALERT_PERSIST_SECONDS)
-                                    if time.time() - alert_last_seen > ALERT_PERSIST_SECONDS:
-                                        alert_active = False
-                                        detected_target = None
-                                    self.face_locations = []
-                                    self.face_names = []
-                        else:
-                             # No targets uploaded - clear alert if expired
-                             if time.time() - alert_last_seen > ALERT_PERSIST_SECONDS:
-                                 alert_active = False
-
-                    except Exception as e:
-                        # DeepFace might throw if no face detected or other issues
-                        # Don't clear alert immediately - let it persist
-                        if time.time() - alert_last_seen > ALERT_PERSIST_SECONDS:
-                            with self.lock:
-                                alert_active = False
-                                detected_target = None
-                        self.face_locations = []
-                        self.face_names = []
 
                 with self.lock:
                     self.current_depth = depth_map
@@ -486,9 +421,77 @@ class VideoStream:
                     self.obstacle_analysis = obstacle_analysis
             else:
                 time.sleep(0.1)
-                
-            frame_count += 1
             time.sleep(0.01)
+
+    def process_faces(self):
+        global alert_active, detected_target, alert_last_seen
+
+        while self.running:
+            frame_to_process = None
+            with self.lock:
+                if self.current_frame is not None:
+                    frame_to_process = self.current_frame.copy()
+
+            if frame_to_process is not None:
+                try:
+                    target_files = [f for f in os.listdir(target_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+                    if len(target_files) > 0:
+                        small_frame = cv2.resize(frame_to_process, (0, 0), fx=0.5, fy=0.5)
+                        
+                        dfs = DeepFace.find(
+                            img_path=small_frame, 
+                            db_path=target_dir, 
+                            model_name="VGG-Face",
+                            enforce_detection=False,
+                            detector_backend="opencv",
+                            silent=True
+                        )
+                        
+                        found_targets = []
+                        current_locations = []
+                        
+                        for df in dfs:
+                            if not df.empty:
+                                for index, row in df.iterrows():
+                                    identity = row['identity']
+                                    name = os.path.basename(identity).split('.')[0]
+                                    found_targets.append(name)
+                                    
+                                    x = int(row['source_x'] * 2)
+                                    y = int(row['source_y'] * 2)
+                                    w = int(row['source_w'] * 2)
+                                    h = int(row['source_h'] * 2)
+                                    current_locations.append((x, y, w, h, name))
+                        
+                        with self.lock:
+                            if found_targets:
+                                alert_active = True
+                                detected_target = found_targets[0]
+                                alert_last_seen = time.time()
+                                self.face_locations = current_locations
+                                self.face_names = found_targets
+                                print(f"🎯 TARGET DETECTED: {found_targets}")
+                            else:
+                                if time.time() - alert_last_seen > ALERT_PERSIST_SECONDS:
+                                    alert_active = False
+                                    detected_target = None
+                                    self.face_locations = []
+                                    self.face_names = []
+                    else:
+                        if time.time() - alert_last_seen > ALERT_PERSIST_SECONDS:
+                            with self.lock:
+                                alert_active = False
+
+                except Exception as e:
+                    if time.time() - alert_last_seen > ALERT_PERSIST_SECONDS:
+                        with self.lock:
+                            alert_active = False
+                            detected_target = None
+                            self.face_locations = []
+                            self.face_names = []
+            else:
+                time.sleep(0.1)
+            time.sleep(0.05)
 
     def get_frame(self, mode):
         with self.lock:
@@ -496,16 +499,15 @@ class VideoStream:
                 return None
             
             display_frame = self.current_frame.copy()
-            
-            # Draw Faces
-            if self.face_locations:
-                for (x, y, w, h, name) in self.face_locations:
-                    cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    cv2.rectangle(display_frame, (x, y - 35), (x + w, y), (0, 255, 0), cv2.FILLED)
-                    font = cv2.FONT_HERSHEY_DUPLEX
-                    cv2.putText(display_frame, name, (x + 6, y - 6), font, 1.0, (255, 255, 255), 1)
 
             if mode == 'rgb':
+                # Draw Faces on RGB mode
+                if self.face_locations:
+                    for (x, y, w, h, name) in self.face_locations:
+                        cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                        cv2.rectangle(display_frame, (x, y - 35), (x + w, y), (0, 255, 0), cv2.FILLED)
+                        font = cv2.FONT_HERSHEY_DUPLEX
+                        cv2.putText(display_frame, name, (x + 6, y - 6), font, 1.0, (255, 255, 255), 1)
                 return display_frame
             
             elif mode == 'depth':
@@ -523,6 +525,13 @@ class VideoStream:
                 return display_frame
             
             elif mode == 'both':
+                # Draw faces on the RGB side
+                if self.face_locations:
+                    for (x, y, w, h, name) in self.face_locations:
+                        cv2.rectangle(display_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                        cv2.rectangle(display_frame, (x, y - 35), (x + w, y), (0, 255, 0), cv2.FILLED)
+                        font = cv2.FONT_HERSHEY_DUPLEX
+                        cv2.putText(display_frame, name, (x + 6, y - 6), font, 1.0, (255, 255, 255), 1)
                 if self.current_depth is None:
                     depth_display = display_frame
                 else:

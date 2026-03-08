@@ -2396,12 +2396,13 @@
             if (liveFeed) liveFeed.src = videoUrl;
             if (emFeed) emFeed.src = videoUrl;
 
-            // AI feeds use same mobile video
+            // AI feeds use Flask backend for processed streams
+            const localBase = 'http://127.0.0.1:5000';
             const aiDetectionFeed = safeGetElement('ai-detection-feed');
             const aiDepthFeed = safeGetElement('ai-depth-feed');
 
-            if (aiDetectionFeed) aiDetectionFeed.src = videoUrl;
-            if (aiDepthFeed && aiDepthFeed.tagName === 'IMG') aiDepthFeed.src = videoUrl;
+            if (aiDetectionFeed) aiDetectionFeed.data = `${localBase}/video_feed?mode=rgb`;
+            if (aiDepthFeed && aiDepthFeed.tagName === 'IMG') aiDepthFeed.src = `${localBase}/video_feed?mode=depth`;
 
             // Apply saved rotation via CSS
             if (currentRotation !== 0) {
@@ -2665,8 +2666,6 @@
 
         let _aiDataFailCount = 0;
         async function fetchAIData() {
-            // AI server not available in 2-IP mode (rover + mobile only)
-            return;
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 3000);
@@ -2707,9 +2706,16 @@
                 // Check for Alert
                 if (data.alert?.active) {
                     showTargetAlert(data.alert.target);
-                } else {
-                    // Remove all alert overlays
-                    document.querySelectorAll('[id^="target-alert-overlay"]').forEach(el => el.remove());
+                    // Reset hide timer whenever we get an active alert
+                    clearTimeout(window._alertHideTimer);
+                    window._alertHideTimer = null;
+                }
+                // Delay hiding alerts to avoid flicker between detection cycles
+                if (data.alert && data.alert.active === false && !window._alertHideTimer) {
+                    window._alertHideTimer = setTimeout(() => {
+                        document.querySelectorAll('[id^="target-alert-overlay"]').forEach(el => el.remove());
+                        window._alertHideTimer = null;
+                    }, 2000);
                 }
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -2753,12 +2759,6 @@
                 const nameEl = el.querySelector('.alert-name');
                 if (nameEl) nameEl.textContent = name || 'UNKNOWN';
             });
-
-            // Auto-remove after 3.5 seconds if no continuous update (matches backend alert persistence)
-            clearTimeout(window.alertTimeout);
-            window.alertTimeout = setTimeout(() => {
-                document.querySelectorAll('[id^="target-alert-overlay"]').forEach(el => el.remove());
-            }, 3500);
         }
 
         async function uploadTargetFace(input) {
