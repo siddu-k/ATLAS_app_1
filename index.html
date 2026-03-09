@@ -20,17 +20,6 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script type="importmap">
-        {
-            "imports": {
-                "@google/generative-ai": "https://esm.run/@google/generative-ai"
-            }
-        }
-    </script>
-    <script type="module">
-        import { GoogleGenerativeAI } from "@google/generative-ai";
-        window.GoogleGenerativeAI = GoogleGenerativeAI;
-    </script>
 
     <style>
         :root {
@@ -1997,7 +1986,7 @@
                 <button id="aiassist-analyze-btn" disabled
                     class="flex items-center gap-2 px-5 py-2 text-[9px] font-bold tracking-widest transition-all bg-blue-600 hover:bg-blue-500 text-white disabled:bg-white/5 disabled:text-white/20 disabled:cursor-not-allowed shadow-lg shadow-blue-900/30 border border-blue-500/30 disabled:border-white/10 disabled:shadow-none">
                     <i class="ph ph-lightning"></i>
-                    <span id="aiassist-analyze-text">ANALYZE_FIELD</span>
+                    <span id="aiassist-analyze-text">ANALYZE_ZONE</span>
                 </button>
             </div>
         </div>
@@ -2017,8 +2006,8 @@
                     <div class="flex items-center gap-2">
                         <i class="ph ph-map-pin-area text-blue-400 text-lg"></i>
                         <div>
-                            <h2 class="text-[10px] font-bold text-white tracking-widest">FIELD_ANALYSIS</h2>
-                            <p class="text-[7px] text-white/30 tracking-widest">GEMINI_AI_POWERED</p>
+                            <h2 class="text-[10px] font-bold text-white tracking-widest">TACTICAL_INTEL</h2>
+                            <p class="text-[7px] text-white/30 tracking-widest">OPENROUTER_AI</p>
                         </div>
                     </div>
                     <button id="aiassist-close-sidebar"
@@ -2027,29 +2016,47 @@
                     </button>
                 </div>
 
-                <!-- Gemini Model Selector -->
-                <div class="mb-3">
-                    <label class="text-[7px] text-white/30 font-bold tracking-widest mb-1 block">GEMINI_MODEL</label>
-                    <select id="aiassist-gemini-model"
-                        class="aiassist-glass appearance-none w-full bg-white/5 text-[9px] text-white border border-white/10 px-3 py-2 focus:outline-none focus:border-blue-500/50 hover:bg-white/8 cursor-pointer font-bold tracking-wider">
-                        <option value="gemini-2.0-flash" selected style="background:#111;color:white;">GEMINI 2.0 FLASH (FAST)</option>
-                        <option value="gemini-2.0-flash-exp" style="background:#111;color:white;">GEMINI 2.0 FLASH EXP</option>
-                        <option value="gemini-1.5-flash" style="background:#111;color:white;">GEMINI 1.5 FLASH</option>
-                        <option value="gemini-1.5-pro" style="background:#111;color:white;">GEMINI 1.5 PRO</option>
-                    </select>
+                <!-- OpenRouter Settings Button -->
+                <div class="mb-3 flex gap-2">
+                    <button id="aiassist-settings-btn" onclick="aiAssistOpenSettings()"
+                        class="flex-1 flex items-center justify-center gap-2 bg-white/5 text-[9px] text-white/60 border border-white/10 px-3 py-2 hover:bg-white/10 hover:text-white transition-all font-bold tracking-wider">
+                        <i class="ph ph-gear text-blue-400 text-xs"></i> AI_SETTINGS
+                    </button>
+                    <div id="aiassist-connection-status" class="flex items-center gap-1 bg-white/5 border border-white/10 px-3 py-2">
+                        <div id="aiassist-status-dot" class="w-1.5 h-1.5 rounded-full bg-white/20"></div>
+                        <span id="aiassist-status-text" class="text-[7px] text-white/30 font-bold tracking-widest">NOT SET</span>
+                    </div>
                 </div>
 
-                <!-- API Key -->
-                <div class="mb-3">
-                    <label class="text-[7px] text-white/30 font-bold tracking-widest mb-1 block">API_KEY <span class="text-white/15">(OPTIONAL)</span></label>
-                    <div class="relative">
-                        <input type="password" id="aiassist-api-key" placeholder="AIza..."
-                            class="w-full bg-white/5 text-[9px] text-white border border-white/10 px-3 py-2 pr-8 focus:outline-none focus:border-blue-500/50 font-mono placeholder:text-white/15">
-                        <button onclick="aiAssistToggleKeyVis()" class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-white/10 transition-colors">
-                            <i class="ph ph-eye text-white/30 text-xs" id="aiassist-eye-icon"></i>
+                <!-- AI Settings Modal (inline) -->
+                <div id="aiassist-settings-modal" class="hidden mb-3 aiassist-glass p-3 border border-blue-500/20" style="background:rgba(0,0,0,0.6);">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-[8px] text-blue-400 font-bold tracking-widest">OPENROUTER_CONFIG</span>
+                        <button onclick="aiAssistCloseSettings()" class="text-white/40 hover:text-white">
+                            <i class="ph ph-x text-xs"></i>
                         </button>
                     </div>
-                    <p class="text-[7px] text-white/20 mt-1 ml-0.5">GET KEY: <a href="https://aistudio.google.com/apikey" target="_blank" class="text-blue-400/60 hover:underline">AISTUDIO.GOOGLE.COM</a></p>
+                    <div class="mb-2">
+                        <label class="text-[7px] text-white/30 font-bold tracking-widest mb-1 block">API_KEY</label>
+                        <div class="relative">
+                            <input type="password" id="aiassist-api-key" placeholder="sk-or-v1-..."
+                                class="w-full bg-white/5 text-[9px] text-white border border-white/10 px-3 py-2 pr-8 focus:outline-none focus:border-blue-500/50 font-mono placeholder:text-white/15">
+                            <button onclick="aiAssistToggleKeyVis()" class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-white/10 transition-colors">
+                                <i class="ph ph-eye text-white/30 text-xs" id="aiassist-eye-icon"></i>
+                            </button>
+                        </div>
+                        <p class="text-[7px] text-white/20 mt-1 ml-0.5">GET KEY: <a href="https://openrouter.ai/keys" target="_blank" class="text-blue-400/60 hover:underline">OPENROUTER.AI/KEYS</a></p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="text-[7px] text-white/30 font-bold tracking-widest mb-1 block">MODEL_ID</label>
+                        <input type="text" id="aiassist-model-id" placeholder="google/gemini-2.0-flash-exp:free"
+                            class="w-full bg-white/5 text-[9px] text-white border border-white/10 px-3 py-2 focus:outline-none focus:border-blue-500/50 font-mono placeholder:text-white/15">
+                        <p class="text-[7px] text-white/20 mt-1 ml-0.5">BROWSE: <a href="https://openrouter.ai/models" target="_blank" class="text-blue-400/60 hover:underline">OPENROUTER.AI/MODELS</a></p>
+                    </div>
+                    <button onclick="aiAssistSaveSettings()" id="aiassist-save-settings-btn"
+                        class="w-full py-1.5 bg-blue-600 text-white text-[9px] font-bold tracking-widest hover:bg-blue-500 transition-colors">
+                        SAVE_TO_CLOUD
+                    </button>
                 </div>
 
                 <!-- Tabs -->
@@ -2068,7 +2075,7 @@
                     <div class="flex flex-col items-center justify-center h-40 text-center opacity-30">
                         <i class="ph ph-crosshair text-4xl text-white/50 mb-3"></i>
                         <p class="text-[9px] text-white/50 font-bold tracking-widest">DRAW AN AREA ON MAP</p>
-                        <p class="text-[7px] text-white/30 mt-1">THEN CLICK ANALYZE_FIELD</p>
+                        <p class="text-[7px] text-white/30 mt-1">THEN CLICK ANALYZE_ZONE</p>
                     </div>
                 </div>
                 <div id="aiassist-history" class="hidden space-y-3"></div>
@@ -2113,7 +2120,7 @@
                 <div class="flex items-center gap-3">
                     <i class="ph ph-sparkle text-blue-400 text-lg"></i>
                     <div>
-                        <h3 class="text-[10px] font-bold text-white tracking-widest leading-tight">GEMINI_ASSISTANT</h3>
+                        <h3 class="text-[10px] font-bold text-white tracking-widest leading-tight">AI_ASSISTANT</h3>
                         <p class="text-[7px] text-blue-400/60 font-bold flex items-center gap-1">
                             <span class="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></span>
                             CONTEXT_AWARE
@@ -2135,16 +2142,16 @@
                     <div class="flex-1">
                         <div class="panel-bg p-3 border border-white/10">
                             <p class="text-white/80 text-[10px] leading-relaxed normal-case">
-                                Ready to analyze. I can provide insights on:
+                                ATLAS COMMAND online. Ready for tactical briefing. I provide:
                             </p>
                             <ul class="mt-2 space-y-1 text-[9px] text-white/60 normal-case">
-                                <li class="flex items-center gap-2"><span class="text-blue-400">▸</span> Terrain & land features</li>
-                                <li class="flex items-center gap-2"><span class="text-emerald-400">▸</span> Climate & weather patterns</li>
-                                <li class="flex items-center gap-2"><span class="text-purple-400">▸</span> Tactical area assessment</li>
-                                <li class="flex items-center gap-2"><span class="text-yellow-400">▸</span> Strategic recommendations</li>
+                                <li class="flex items-center gap-2"><span class="text-red-400">▸</span> Terrain & threat assessment</li>
+                                <li class="flex items-center gap-2"><span class="text-emerald-400">▸</span> Defensive position analysis</li>
+                                <li class="flex items-center gap-2"><span class="text-purple-400">▸</span> Asset deployment recommendations</li>
+                                <li class="flex items-center gap-2"><span class="text-yellow-400">▸</span> Strategic operations planning</li>
                             </ul>
                         </div>
-                        <p class="text-[7px] text-white/20 mt-1 ml-1">POWERED BY GEMINI AI</p>
+                        <p class="text-[7px] text-white/20 mt-1 ml-1">POWERED BY OPENROUTER</p>
                     </div>
                 </div>
             </div>
@@ -5196,7 +5203,8 @@
         // AI ASSIST MODE - GEOSPATIAL INTELLIGENCE
         // ═══════════════════════════════════════════════════════════════════════
         (function initAIAssistModule() {
-            const AI_ASSIST_GEMINI_KEY = "AIzaSyDm7ttpgbeUMpq8diqcLK4uAxlHmMO91fM";
+            let OPENROUTER_API_KEY = '';
+            let OPENROUTER_MODEL = 'google/gemini-2.0-flash-exp:free';
 
             let aiAssistDrawnItems = null;
             let aiAssistCurrentBounds = null;
@@ -5207,6 +5215,7 @@
             // --- INIT MAP ---
             window.initAIAssistMap = function () {
                 if (window.aiAssistMap) return;
+                aiAssistLoadSettings();
 
                 const satellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
                     maxZoom: 21,
@@ -5409,26 +5418,139 @@
                 }
             };
 
-            // --- GEMINI API ---
-            async function aiAssistCallGemini(prompt) {
-                const customKey = document.getElementById('aiassist-api-key')?.value.trim();
-                const apiKey = customKey || AI_ASSIST_GEMINI_KEY;
-                const model = document.getElementById('aiassist-gemini-model')?.value || 'gemini-2.0-flash';
+            // --- OPENROUTER API ---
+            async function aiAssistCallLLM(prompt) {
+                const apiKey = document.getElementById('aiassist-api-key')?.value.trim() || OPENROUTER_API_KEY;
+                const model = document.getElementById('aiassist-model-id')?.value.trim() || OPENROUTER_MODEL;
 
-                if (!window.GoogleGenerativeAI) {
-                    throw new Error("Gemini SDK not loaded yet. Please wait a moment and retry.");
+                if (!apiKey) {
+                    throw new Error('NO_API_KEY');
                 }
 
                 try {
-                    const genAI = new window.GoogleGenerativeAI(apiKey);
-                    const genModel = genAI.getGenerativeModel({ model: model });
-                    const result = await genModel.generateContent(prompt);
-                    const response = await result.response;
-                    return response.text();
+                    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`,
+                            'HTTP-Referer': window.location.href,
+                            'X-Title': 'ATLAS'
+                        },
+                        body: JSON.stringify({
+                            model: model,
+                            messages: [{ role: 'user', content: prompt }]
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.error) {
+                        if (data.error.code === 401 || (data.error.message && data.error.message.includes('Invalid'))) throw new Error('AUTH_FAILED');
+                        throw new Error(data.error.message || 'OpenRouter API error');
+                    }
+                    return data.choices[0].message.content;
                 } catch (e) {
-                    console.error("Gemini API Error:", e);
-                    if (e.message && e.message.includes('API_KEY_INVALID')) throw new Error("AUTH_FAILED");
+                    console.error('OpenRouter API Error:', e);
                     throw e;
+                }
+            }
+
+            // --- AI SETTINGS FUNCTIONS ---
+            window.aiAssistOpenSettings = function() {
+                document.getElementById('aiassist-settings-modal')?.classList.remove('hidden');
+            };
+            window.aiAssistCloseSettings = function() {
+                document.getElementById('aiassist-settings-modal')?.classList.add('hidden');
+            };
+
+            async function aiAssistSaveSettings() {
+                const apiKey = document.getElementById('aiassist-api-key')?.value.trim();
+                const modelId = document.getElementById('aiassist-model-id')?.value.trim();
+                const btn = document.getElementById('aiassist-save-settings-btn');
+
+                if (!apiKey) { alert('Please enter an API key'); return; }
+
+                if (btn) { btn.textContent = 'SAVING...'; btn.disabled = true; }
+
+                OPENROUTER_API_KEY = apiKey;
+                OPENROUTER_MODEL = modelId || 'google/gemini-2.0-flash-exp:free';
+
+                if (supabaseClient) {
+                    try {
+                        const { data, error: selErr } = await supabaseClient
+                            .from('ai_settings')
+                            .select('id')
+                            .eq('id', 1)
+                            .single();
+
+                        if (data) {
+                            const { error } = await supabaseClient
+                                .from('ai_settings')
+                                .update({
+                                    openrouter_api_key: apiKey,
+                                    openrouter_model: OPENROUTER_MODEL,
+                                    updated_at: new Date().toISOString()
+                                })
+                                .eq('id', 1);
+                            if (error) throw error;
+                        } else {
+                            const { error } = await supabaseClient
+                                .from('ai_settings')
+                                .insert([{
+                                    id: 1,
+                                    openrouter_api_key: apiKey,
+                                    openrouter_model: OPENROUTER_MODEL,
+                                    updated_at: new Date().toISOString()
+                                }]);
+                            if (error) throw error;
+                        }
+                        console.log('✅ AI settings saved to Supabase');
+                    } catch (err) {
+                        console.error('Failed to save AI settings:', err);
+                    }
+                }
+
+                aiAssistUpdateStatus(true);
+                if (btn) { btn.textContent = 'SAVED ✓'; btn.disabled = false; }
+                setTimeout(() => { if (btn) btn.textContent = 'SAVE_TO_CLOUD'; }, 2000);
+            }
+            window.aiAssistSaveSettings = aiAssistSaveSettings;
+
+            async function aiAssistLoadSettings() {
+                if (!supabaseClient) return;
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('ai_settings')
+                        .select('*')
+                        .eq('id', 1)
+                        .single();
+
+                    if (error || !data) return;
+
+                    if (data.openrouter_api_key) {
+                        OPENROUTER_API_KEY = data.openrouter_api_key;
+                        const keyInput = document.getElementById('aiassist-api-key');
+                        if (keyInput) keyInput.value = data.openrouter_api_key;
+                    }
+                    if (data.openrouter_model) {
+                        OPENROUTER_MODEL = data.openrouter_model;
+                        const modelInput = document.getElementById('aiassist-model-id');
+                        if (modelInput) modelInput.value = data.openrouter_model;
+                    }
+                    aiAssistUpdateStatus(!!data.openrouter_api_key);
+                    console.log('✅ AI settings loaded from Supabase');
+                } catch (err) {
+                    console.error('Failed to load AI settings:', err);
+                }
+            }
+
+            function aiAssistUpdateStatus(connected) {
+                const dot = document.getElementById('aiassist-status-dot');
+                const text = document.getElementById('aiassist-status-text');
+                if (connected) {
+                    if (dot) dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+                    if (text) { text.textContent = 'READY'; text.className = 'text-[7px] text-emerald-400 font-bold tracking-widest'; }
+                } else {
+                    if (dot) dot.className = 'w-1.5 h-1.5 rounded-full bg-white/20';
+                    if (text) { text.textContent = 'NOT SET'; text.className = 'text-[7px] text-white/30 font-bold tracking-widest'; }
                 }
             }
 
@@ -5464,7 +5586,7 @@
                 }
                 list.innerHTML = '';
                 history.forEach((item) => {
-                    if (!item.data || !item.data.soil) return;
+                    if (!item.data || (!item.data.terrain && !item.data.soil)) return;
                     const data = item.data;
                     const locName = data.location || "Unknown";
                     const card = document.createElement('div');
@@ -5476,12 +5598,12 @@
                         </div>
                         <div class="grid grid-cols-2 gap-2 mt-1">
                             <div class="bg-black/30 p-1.5 text-center">
-                                <span class="block text-[7px] text-white/30 tracking-widest">SOIL</span>
-                                <span class="text-[9px] text-white font-bold">${data.soil.type || 'N/A'}</span>
+                                <span class="block text-[7px] text-white/30 tracking-widest">TERRAIN</span>
+                                <span class="text-[9px] text-white font-bold">${data.terrain ? data.terrain.type : 'N/A'}</span>
                             </div>
                             <div class="bg-black/30 p-1.5 text-center">
-                                <span class="block text-[7px] text-white/30 tracking-widest">TEMP</span>
-                                <span class="text-[9px] text-white font-bold">${data.climate ? data.climate.temperature + '°C' : 'N/A'}</span>
+                                <span class="block text-[7px] text-white/30 tracking-widest">THREAT</span>
+                                <span class="text-[9px] text-white font-bold">${data.threats ? data.threats.level : 'N/A'}</span>
                             </div>
                         </div>
                         <div class="hidden group-hover:block text-[7px] text-center text-blue-400 font-bold tracking-widest bg-blue-500/10 py-1">VIEW DETAILS</div>
@@ -5561,51 +5683,47 @@
                         </div>
                         ` : ''}
 
-                        <!-- Soil -->
+                        <!-- Terrain Assessment -->
+                        ${data.terrain ? `
                         <div>
                             <h4 class="text-[8px] text-white/40 font-bold tracking-widest mb-2 flex items-center gap-2">
-                                <i class="ph ph-stack"></i> SOIL_COMPOSITION
+                                <i class="ph ph-mountains"></i> TERRAIN_ASSESSMENT
                             </h4>
                             <div class="grid grid-cols-2 gap-2">
                                 <div class="aiassist-panel p-3">
-                                    <p class="text-[7px] text-white/30 tracking-widest">TYPE</p>
-                                    <p class="text-[9px] font-bold text-white mt-0.5 normal-case">${data.soil.type}</p>
+                                    <p class="text-[7px] text-white/30 tracking-widest">CLASSIFICATION</p>
+                                    <p class="text-[9px] font-bold text-white mt-0.5 normal-case">${data.terrain.type}</p>
                                 </div>
                                 <div class="aiassist-panel p-3">
-                                    <p class="text-[7px] text-white/30 tracking-widest">PH_LEVEL</p>
-                                    <div class="flex items-center gap-2 mt-0.5">
-                                        <span class="text-[9px] font-bold text-blue-400">${data.soil.ph}</span>
-                                        <div class="h-1 flex-1 bg-white/10 overflow-hidden">
-                                            <div class="h-full bg-blue-400" style="width: ${Math.min((parseFloat(data.soil.ph) / 14) * 100, 100)}%"></div>
-                                        </div>
-                                    </div>
+                                    <p class="text-[7px] text-white/30 tracking-widest">VISIBILITY</p>
+                                    <p class="text-[9px] font-bold text-blue-400 mt-0.5">${data.terrain.visibility}</p>
                                 </div>
                                 <div class="aiassist-panel p-3 col-span-2">
-                                    <p class="text-[7px] text-white/30 tracking-widest mb-1.5">NUTRIENTS</p>
+                                    <p class="text-[7px] text-white/30 tracking-widest mb-1.5">TACTICAL_METRICS</p>
                                     <div class="grid grid-cols-3 gap-2">
                                         <div class="bg-black/30 p-1.5 text-center">
-                                            <p class="text-[7px] text-white/20">NITROGEN</p>
-                                            <p class="text-[9px] text-emerald-400 font-bold">${data.soil.nitrogen || 'N/A'}</p>
+                                            <p class="text-[7px] text-white/20">COVER</p>
+                                            <p class="text-[9px] text-emerald-400 font-bold">${data.terrain.cover_rating || 'N/A'}</p>
                                         </div>
                                         <div class="bg-black/30 p-1.5 text-center">
-                                            <p class="text-[7px] text-white/20">PHOSPHORUS</p>
-                                            <p class="text-[9px] text-blue-300 font-bold">${data.soil.phosphorus || 'N/A'}</p>
+                                            <p class="text-[7px] text-white/20">VEHICLE</p>
+                                            <p class="text-[9px] text-blue-300 font-bold">${data.terrain.vehicle_access || 'N/A'}</p>
                                         </div>
                                         <div class="bg-black/30 p-1.5 text-center">
-                                            <p class="text-[7px] text-white/20">POTASSIUM</p>
-                                            <p class="text-[9px] text-purple-300 font-bold">${data.soil.potassium || 'N/A'}</p>
+                                            <p class="text-[7px] text-white/20">FORTIFY</p>
+                                            <p class="text-[9px] text-purple-300 font-bold">${data.terrain.fortification_potential || 'N/A'}</p>
                                         </div>
                                     </div>
                                 </div>
-                                ${(data.soil.metals && data.soil.metals.length > 0) ? `
-                                <div class="aiassist-panel p-3 col-span-2" style="border-color: rgba(245,158,11,0.2);">
-                                    <p class="text-[7px] text-yellow-400/80 tracking-widest mb-2 font-bold flex items-center gap-1">
-                                        <i class="ph ph-atom"></i> DETECTED_METALS
+                                ${(data.terrain.hazards && data.terrain.hazards.length > 0) ? `
+                                <div class="aiassist-panel p-3 col-span-2" style="border-color: rgba(239,68,68,0.2);">
+                                    <p class="text-[7px] text-red-400/80 tracking-widest mb-2 font-bold flex items-center gap-1">
+                                        <i class="ph ph-warning"></i> IDENTIFIED_HAZARDS
                                     </p>
                                     <div class="flex flex-wrap gap-1.5">
-                                        ${data.soil.metals.map(metal => `
-                                            <span class="bg-yellow-500/10 text-yellow-300/80 px-2 py-0.5 text-[8px] font-bold border border-yellow-500/20">
-                                                ${metal}
+                                        ${data.terrain.hazards.map(h => `
+                                            <span class="bg-red-500/10 text-red-300/80 px-2 py-0.5 text-[8px] font-bold border border-red-500/20">
+                                                ${h}
                                             </span>
                                         `).join('')}
                                     </div>
@@ -5613,29 +5731,53 @@
                                 ` : ''}
                             </div>
                         </div>
+                        ` : ''}
 
-                        <!-- Crops -->
-                        ${data.crops ? `
+                        <!-- Threat Level -->
+                        ${data.threats ? `
+                        <div class="aiassist-panel p-4" style="border-color: ${data.threats.level === 'CRITICAL' ? 'rgba(239,68,68,0.3)' : data.threats.level === 'HIGH' ? 'rgba(245,158,11,0.3)' : 'rgba(61,139,253,0.2)'};">
+                            <h4 class="text-[8px] ${data.threats.level === 'CRITICAL' || data.threats.level === 'HIGH' ? 'text-red-400' : 'text-yellow-400'} font-bold tracking-widest mb-2 flex items-center gap-2">
+                                <i class="ph ph-shield-warning"></i> THREAT_ASSESSMENT
+                            </h4>
+                            <div class="grid grid-cols-3 gap-2 mb-2">
+                                <div class="bg-black/30 p-2 text-center">
+                                    <p class="text-[7px] text-white/20">LEVEL</p>
+                                    <p class="text-[9px] font-bold ${data.threats.level === 'CRITICAL' ? 'text-red-400' : data.threats.level === 'HIGH' ? 'text-orange-400' : data.threats.level === 'MEDIUM' ? 'text-yellow-400' : 'text-emerald-400'}">${data.threats.level}</p>
+                                </div>
+                                <div class="bg-black/30 p-2 text-center">
+                                    <p class="text-[7px] text-white/20">TYPE</p>
+                                    <p class="text-[9px] font-bold text-white normal-case">${data.threats.type}</p>
+                                </div>
+                                <div class="bg-black/30 p-2 text-center">
+                                    <p class="text-[7px] text-white/20">SOURCE</p>
+                                    <p class="text-[9px] font-bold text-white/60 normal-case">${data.threats.source}</p>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        <!-- Recommended Assets -->
+                        ${data.assets ? `
                         <div>
                             <h4 class="text-[8px] text-white/40 font-bold tracking-widest mb-2 flex items-center gap-2">
-                                <i class="ph ph-plant"></i> OPTIMIZED_CROPS
+                                <i class="ph ph-shield-check"></i> RECOMMENDED_ASSETS
                             </h4>
                             <div class="space-y-2">
-                                ${data.crops.map((c, i) => `
+                                ${data.assets.map((a, i) => `
                                     <div class="aiassist-panel p-3 flex items-center justify-between group">
                                         <div class="flex items-center gap-3">
-                                            <div class="w-7 h-7 ${i === 0 ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/30'} flex items-center justify-center font-bold text-[9px]">
+                                            <div class="w-7 h-7 ${i === 0 ? 'bg-red-600 text-white' : 'bg-white/5 text-white/30'} flex items-center justify-center font-bold text-[9px]">
                                                 ${i + 1}
                                             </div>
                                             <div>
-                                                <p class="text-[9px] font-bold text-white normal-case">${c.name}</p>
-                                                <p class="text-[7px] text-white/30 tracking-widest">${c.season}</p>
+                                                <p class="text-[9px] font-bold text-white normal-case">${a.name}</p>
+                                                <p class="text-[7px] text-white/30 tracking-widest">${a.role}</p>
                                             </div>
                                         </div>
                                         <div class="text-right">
-                                            <span class="text-[9px] font-bold ${i === 0 ? 'text-blue-400' : 'text-white/30'}">${c.match}%</span>
+                                            <span class="text-[9px] font-bold ${i === 0 ? 'text-red-400' : 'text-white/30'}">${a.match}%</span>
                                             <div class="w-10 h-1 bg-white/10 mt-1 ml-auto">
-                                                <div class="h-full ${i === 0 ? 'bg-blue-400' : 'bg-white/20'}" style="width: ${c.match}%"></div>
+                                                <div class="h-full ${i === 0 ? 'bg-red-400' : 'bg-white/20'}" style="width: ${a.match}%"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -5644,17 +5786,13 @@
                         </div>
                         ` : ''}
 
-                        <!-- Water & Strategy -->
-                        ${data.water ? `
-                        <div class="aiassist-panel p-4" style="border-color: rgba(61,139,253,0.2);">
-                            <h4 class="text-[8px] text-blue-400 font-bold tracking-widest mb-2 flex items-center gap-2">
-                                <i class="ph ph-drop"></i> IRRIGATION_PLAN
+                        <!-- Strategic Operations Plan -->
+                        ${data.strategy ? `
+                        <div class="aiassist-panel p-4" style="border-color: rgba(239,68,68,0.2);">
+                            <h4 class="text-[8px] text-red-400 font-bold tracking-widest mb-2 flex items-center gap-2">
+                                <i class="ph ph-strategy"></i> OPERATIONS_PLAN
                             </h4>
-                            <div class="flex justify-between text-[9px] mb-3 text-white/70 normal-case">
-                                <span>${data.water.quantity}</span>
-                                <span class="text-white/40">${data.water.schedule}</span>
-                            </div>
-                            <div class="pt-3 border-t border-white/10">
+                            <div class="pt-1">
                                 <p class="text-[9px] text-white/50 italic normal-case leading-relaxed">"${data.strategy}"</p>
                             </div>
                         </div>
@@ -5699,50 +5837,49 @@
                     `;
 
                     const prompt = `
-                        Act as an expert Agronomist, Geographer and Military Tactical Advisor AI.
+                        You are ATLAS COMMAND — an elite Military Defense Commander AI with expertise in tactical reconnaissance, threat assessment, terrain analysis, and strategic operations planning.
                         Target Location: "${locName}" (${lat}, ${lng}).
                         
                         TASK:
                         1. Check if location is WATER/OCEAN. If yes, return {"error": "Target is a water body."}.
                         2. If LAND, return ONLY valid JSON (no markdown):
                         {
-                            "location_insight": "One engaging sentence about this area's significance for agriculture/military/geography.",
+                            "location_insight": "One tactical sentence about this area's strategic military significance.",
                             "demographics": {
-                                "population_type": "Rural/Urban/Suburban - brief description",
+                                "population_type": "Rural/Urban/Suburban - civilian density & threat context",
                                 "language": "Primary language spoken"
                             },
                             "climate": {
                                 "temperature": "Current temp estimate in C",
-                                "description": "Weather condition short description",
+                                "description": "Weather condition & visibility impact on operations",
                                 "humidity": "Humidity percentage number",
                                 "wind_speed": "Wind speed number",
                                 "sea_level": "Elevation in meters"
                             },
-                            "soil": {
-                                "type": "Soil Type Name",
-                                "ph": "pH Value e.g. 6.5",
-                                "nitrogen": "Low/Medium/High",
-                                "phosphorus": "Low/Medium/High",
-                                "potassium": "Low/Medium/High",
-                                "metals": ["Iron", "Aluminum"],
-                                "moisture": "Percentage"
+                            "terrain": {
+                                "type": "Terrain classification (Desert/Forest/Urban/Mountain/Plains etc)",
+                                "cover_rating": "Low/Medium/High - natural cover availability",
+                                "vehicle_access": "Easy/Moderate/Difficult - ground vehicle traversability",
+                                "fortification_potential": "Low/Medium/High",
+                                "hazards": ["IED risk", "Flooding", "Landslide"],
+                                "visibility": "Open/Partial/Dense - line of sight assessment"
                             },
-                            "water": {
-                                "quantity": "Liters/ha estimate",
-                                "schedule": "Schedule",
-                                "source": "Water source"
+                            "threats": {
+                                "level": "LOW/MEDIUM/HIGH/CRITICAL",
+                                "type": "Threat classification",
+                                "source": "Intel source assessment"
                             },
-                            "crops": [
-                                { "name": "Best Crop", "match": 98, "season": "Season" },
-                                { "name": "Alt Crop 1", "match": 85, "season": "Season" },
-                                { "name": "Alt Crop 2", "match": 72, "season": "Season" }
+                            "assets": [
+                                { "name": "Recommended Asset 1", "match": 98, "role": "Primary role" },
+                                { "name": "Recommended Asset 2", "match": 85, "role": "Support role" },
+                                { "name": "Recommended Asset 3", "match": 72, "role": "Backup role" }
                             ],
-                            "strategy": "A concise expert tactical and agricultural strategy paragraph for this area."
+                            "strategy": "A concise tactical operations strategy for this AO (Area of Operations). Include recommended approach vectors, defensive positions, and extraction routes."
                         }
                         Return ONLY the JSON object, no extra text.
                     `;
 
-                    const raw = await aiAssistCallGemini(prompt);
+                    const raw = await aiAssistCallLLM(prompt);
                     const data = JSON.parse(raw.replace(/```json/g, '').replace(/```/g, '').trim());
 
                     if (data.error) {
@@ -5765,13 +5902,13 @@
                     }
                 } catch (e) {
                     console.error("AI Assist error:", e);
-                    if (e.message === "AUTH_FAILED") {
+                    if (e.message === "AUTH_FAILED" || e.message === "NO_API_KEY") {
                         report.innerHTML = `
                             <div class="aiassist-panel p-6 text-center" style="border-color: rgba(245,158,11,0.3);">
                                 <i class="ph ph-key text-yellow-400 text-3xl mb-3 animate-pulse"></i>
                                 <h3 class="text-white font-bold mb-1 text-[10px] tracking-widest">API_KEY_REQUIRED</h3>
-                                <p class="text-yellow-400/60 text-[9px] mb-4 normal-case">Invalid or exhausted API key. Enter your Gemini API key above.</p>
-                                <p class="text-[7px] text-white/20">GET KEY: <a href="https://aistudio.google.com/apikey" target="_blank" class="text-blue-400/60 hover:underline">AISTUDIO.GOOGLE.COM</a></p>
+                                <p class="text-yellow-400/60 text-[9px] mb-4 normal-case">Set your OpenRouter API key in AI_SETTINGS above.</p>
+                                <p class="text-[7px] text-white/20">GET KEY: <a href="https://openrouter.ai/keys" target="_blank" class="text-blue-400/60 hover:underline">OPENROUTER.AI/KEYS</a></p>
                             </div>`;
                     } else {
                         report.innerHTML = `
@@ -5784,7 +5921,7 @@
                     }
                 }
 
-                btnText.innerText = "ANALYZE_FIELD";
+                btnText.innerText = "ANALYZE_ZONE";
                 btn.disabled = false;
             });
 
@@ -5813,7 +5950,7 @@
                 }
 
                 try {
-                    const ans = await aiAssistCallGemini(`You are an expert military tactical advisor, geographer, and agronomist AI assistant integrated into the ATLAS rover control system. Answer the following question concisely and helpfully.\n\nQuestion: "${q}"\n\nContext: ${ctx}\n\nKeep your answer focused, practical, and under 200 words.`);
+                    const ans = await aiAssistCallLLM(`You are ATLAS COMMAND — an elite Military Defense Commander AI integrated into the ATLAS armed rover system. You speak with authority like a field commander. Your expertise: tactical reconnaissance, threat assessment, terrain analysis, defensive positioning, and strategic operations. Never mention agriculture or farming. Always respond in a military command tone.\n\nQuestion: "${q}"\n\nContext: ${ctx}\n\nKeep your answer focused, tactical, and under 200 words. Use military terminology.`);
                     box.innerHTML += `
                         <div class="flex gap-3 aiassist-animate-enter">
                             <div class="w-6 h-6 bg-blue-600/30 border border-blue-500/50 flex items-center justify-center shrink-0">
