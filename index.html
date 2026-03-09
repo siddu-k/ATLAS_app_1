@@ -936,6 +936,46 @@
             display: none !important;
         }
 
+        /* Place Search Styles */
+        .place-search-wrap {
+            position: relative;
+            z-index: 1100;
+        }
+        .place-search-wrap .search-toggle {
+            width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .place-search-wrap .search-toggle:hover { background: rgba(255,255,255,0.1); }
+        .place-search-wrap .search-input-box {
+            position: absolute; top: 0; right: 0;
+            width: 0; opacity: 0; overflow: hidden;
+            transition: width 0.25s ease, opacity 0.2s ease;
+            pointer-events: none;
+        }
+        .place-search-wrap.open .search-toggle { display: none; }
+        .place-search-wrap.open .search-input-box {
+            width: 260px; opacity: 1; pointer-events: auto;
+        }
+        .place-search-results {
+            position: absolute; top: 100%; right: 0; width: 260px;
+            max-height: 200px; overflow-y: auto;
+            display: none; margin-top: 2px;
+        }
+        .place-search-results.visible { display: block; }
+        .place-search-results .search-item {
+            padding: 6px 10px; cursor: pointer;
+            font-size: 9px; color: rgba(255,255,255,0.7);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            transition: background 0.15s;
+        }
+        .place-search-results .search-item:hover {
+            background: rgba(255,255,255,0.1); color: white;
+        }
+        .place-search-results .search-item .search-item-sub {
+            font-size: 7px; color: rgba(255,255,255,0.3); margin-top: 1px;
+        }
+
         /* Street View PiP for AI Assist */
         #aiassist-sv-pip {
             position: absolute;
@@ -1803,6 +1843,23 @@
 
         <div class="absolute inset-0 bg-white/5 pointer-events-none z-[2]"></div>
 
+        <!-- Place Search (Emergency) -->
+        <div class="absolute top-4 left-[320px] z-[1100] pointer-events-auto">
+            <div class="place-search-wrap" id="em-place-search">
+                <div class="search-toggle panel-bg border border-white/10" onclick="togglePlaceSearch('em-place-search')">
+                    <i class="ph ph-magnifying-glass text-blue-400 text-sm"></i>
+                </div>
+                <div class="search-input-box">
+                    <div class="panel-bg border border-white/10 flex items-center px-2 gap-2">
+                        <i class="ph ph-magnifying-glass text-blue-400 text-xs"></i>
+                        <input type="text" placeholder="Search location..." class="flex-1 bg-transparent text-[9px] text-white py-2 outline-none placeholder:text-white/20 font-mono" oninput="handlePlaceSearch(this.value, 'em-place-search')">
+                        <button onclick="togglePlaceSearch('em-place-search')" class="text-white/30 hover:text-white"><i class="ph ph-x text-xs"></i></button>
+                    </div>
+                </div>
+                <div class="place-search-results panel-bg border border-white/10 custom-scrollbar" id="em-place-search-results"></div>
+            </div>
+        </div>
+
         <!-- Incident Intel (Top Left) -->
         <div class="absolute top-4 left-4 w-72 panel-bg p-4 z-[1000] max-h-[calc(100vh-20rem)] flex flex-col">
             <div class="bracket tl"></div>
@@ -1974,6 +2031,20 @@
 
             <!-- Action Buttons -->
             <div class="flex gap-2 pointer-events-auto">
+                <!-- Place Search (AI Assist) -->
+                <div class="place-search-wrap" id="ai-place-search">
+                    <div class="search-toggle panel-bg border border-white/10" onclick="togglePlaceSearch('ai-place-search')">
+                        <i class="ph ph-magnifying-glass text-blue-400 text-sm"></i>
+                    </div>
+                    <div class="search-input-box">
+                        <div class="panel-bg border border-white/10 flex items-center px-2 gap-2">
+                            <i class="ph ph-magnifying-glass text-blue-400 text-xs"></i>
+                            <input type="text" placeholder="Search location..." class="flex-1 bg-transparent text-[9px] text-white py-2 outline-none placeholder:text-white/20 font-mono" oninput="handlePlaceSearch(this.value, 'ai-place-search')">
+                            <button onclick="togglePlaceSearch('ai-place-search')" class="text-white/30 hover:text-white"><i class="ph ph-x text-xs"></i></button>
+                        </div>
+                    </div>
+                    <div class="place-search-results panel-bg border border-white/10 custom-scrollbar" id="ai-place-search-results"></div>
+                </div>
                 <button id="aiassist-show-sidebar"
                     class="hidden items-center gap-2 panel-bg px-4 py-2 text-blue-400 text-[9px] font-bold tracking-widest hover:bg-white/10 transition-all"
                     style="border-color: rgba(61,139,253,0.3);">
@@ -5924,6 +5995,67 @@
                 btnText.innerText = "ANALYZE_ZONE";
                 btn.disabled = false;
             });
+
+            // --- PLACE SEARCH ---
+            let placeSearchTimer = null;
+
+            window.togglePlaceSearch = function(wrapId) {
+                const wrap = document.getElementById(wrapId);
+                if (!wrap) return;
+                wrap.classList.toggle('open');
+                if (wrap.classList.contains('open')) {
+                    const input = wrap.querySelector('input');
+                    if (input) { input.value = ''; input.focus(); }
+                }
+                const results = wrap.querySelector('.place-search-results');
+                if (results) { results.classList.remove('visible'); results.innerHTML = ''; }
+            };
+
+            window.handlePlaceSearch = function(query, wrapId) {
+                const resultsEl = document.getElementById(wrapId + '-results');
+                if (!resultsEl) return;
+
+                if (placeSearchTimer) clearTimeout(placeSearchTimer);
+
+                if (!query || query.length < 2) {
+                    resultsEl.classList.remove('visible');
+                    resultsEl.innerHTML = '';
+                    return;
+                }
+
+                placeSearchTimer = setTimeout(async () => {
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=6&addressdetails=1`, {
+                            headers: { 'Accept-Language': 'en' }
+                        });
+                        const places = await res.json();
+
+                        if (!places.length) {
+                            resultsEl.innerHTML = '<div class="search-item text-white/20">No results found</div>';
+                            resultsEl.classList.add('visible');
+                            return;
+                        }
+
+                        resultsEl.innerHTML = places.map(p => `
+                            <div class="search-item" onclick="placeSearchSelect(${p.lat}, ${p.lon}, '${wrapId}')">
+                                <div class="font-bold text-white/80">${p.display_name.split(',').slice(0, 2).join(',')}</div>
+                                <div class="search-item-sub">${p.display_name}</div>
+                            </div>
+                        `).join('');
+                        resultsEl.classList.add('visible');
+                    } catch (e) {
+                        console.warn('Place search error:', e);
+                    }
+                }, 300);
+            };
+
+            window.placeSearchSelect = function(lat, lon, wrapId) {
+                const mapObj = wrapId.startsWith('em-') ? window.emergencyMap : window.aiAssistMap;
+                if (mapObj) {
+                    mapObj.setView([lat, lon], 15, { animate: true });
+                }
+                togglePlaceSearch(wrapId);
+            };
 
             // --- CHAT ---
             async function aiAssistHandleChat() {
