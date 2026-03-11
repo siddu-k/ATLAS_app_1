@@ -2161,6 +2161,27 @@
             </div>
         </aside>
 
+        <!-- Weather Intel Overlay (above Street View PiP) -->
+        <div id="aiassist-wx-panel" class="hidden" style="display:none; position:absolute; bottom:0; right:12px; z-index:1600; width:320px;">
+            <div style="background:rgba(8,10,18,0.92); border:1px solid rgba(61,139,253,0.25); border-bottom:none; backdrop-filter:blur(12px);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.08);">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <i class="ph ph-cloud-sun text-blue-400" style="font-size:12px;"></i>
+                        <span style="font-size:8px; color:rgba(255,255,255,0.7); font-weight:700; letter-spacing:0.15em;">WEATHER_INTEL</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <span id="aiassist-wx-coords" style="font-size:7px; color:rgba(255,255,255,0.25); font-family:monospace;"></span>
+                        <button onclick="window.aiAssistToggleWxPanel()" style="width:18px;height:18px;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.4);" onmouseover="this.style.color='white'" onmouseout="this.style.color='rgba(255,255,255,0.4)'">
+                            <i class="ph ph-caret-down" id="aiassist-wx-toggle-icon" style="font-size:10px;"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="aiassist-wx-body" style="padding:8px 10px;">
+                    <div id="aiassist-wx-content" style="font-size:9px; color:rgba(255,255,255,0.4); text-align:center; padding:8px 0;">No data</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Street View PiP Window -->
         <div id="aiassist-sv-pip" class="hidden" style="display:none;">
             <div id="aiassist-sv-pip-header">
@@ -5342,7 +5363,9 @@
                     aiAssistDrawnItems.clearLayers();
                     aiAssistDrawnItems.addLayer(layer);
 
-                    if (layer instanceof L.Polygon) {
+                    let targetLat, targetLng;
+
+                    if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
                         const latlngs = layer.getLatLngs()[0];
                         latlngs.forEach(ll => {
                             const m = L.circleMarker(ll, {
@@ -5359,11 +5382,34 @@
                         ).join('');
                         layer.bindTooltip(`
                             <div style="min-width:170px;">
-                                <div style="font-weight:700;font-size:9px;color:#3d8bfd;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">FIELD COORDINATES</div>
+                                <div style="font-weight:700;font-size:9px;color:#3d8bfd;margin-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">ZONE COORDINATES</div>
                                 ${coordList}
                                 <div style="font-size:7px;color:rgba(255,255,255,0.3);margin-top:6px;text-align:center;">CLICK ANALYZE TO PROCEED</div>
                             </div>
                         `, { direction: 'center', className: 'aiassist-tooltip', opacity: 1 });
+
+                        const center = layer.getBounds().getCenter();
+                        targetLat = center.lat;
+                        targetLng = center.lng;
+                    }
+
+                    // --- MARKER DROP ---
+                    if (layer instanceof L.Marker) {
+                        const ll = layer.getLatLng();
+                        targetLat = ll.lat;
+                        targetLng = ll.lng;
+                        layer.bindTooltip(`
+                            <div style="min-width:140px;text-align:center;">
+                                <div style="font-weight:700;font-size:9px;color:#3d8bfd;margin-bottom:4px;">RECON_POINT</div>
+                                <div style="font-size:8px;color:rgba(255,255,255,0.5);font-family:monospace;">${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}</div>
+                            </div>
+                        `, { direction: 'top', className: 'aiassist-tooltip', opacity: 1 });
+                    }
+
+                    // Open Street View + Weather for any drawn shape
+                    if (targetLat && targetLng) {
+                        window.aiAssistOpenStreetView(targetLat, targetLng);
+                        window.aiAssistFetchWeather(targetLat, targetLng);
                     }
 
                     if (layer.getBounds) aiAssistCurrentBounds = layer.getBounds().getCenter();
@@ -6163,11 +6209,13 @@
                     svPip.style.bottom = 'auto';
                     svPip.style.left = `${e.clientX - svDragX}px`;
                     svPip.style.top = `${e.clientY - svDragY}px`;
+                    if (window.aiAssistSyncWxPanel) window.aiAssistSyncWxPanel();
                 } else if (isSvResizing && svPip) {
                     const dx = e.clientX - svResizeX;
                     const dy = e.clientY - svResizeY;
                     svPip.style.width = `${Math.max(250, svResizeW + dx)}px`;
                     svPip.style.height = `${Math.max(180, svResizeH + dy)}px`;
+                    if (window.aiAssistSyncWxPanel) window.aiAssistSyncWxPanel();
                 }
             });
 
@@ -6200,7 +6248,78 @@
                     svPip.style.display = 'flex';
                     svPip.style.opacity = '0';
                     setTimeout(() => { svPip.style.opacity = '1'; }, 50);
+                    setTimeout(function () { if (window.aiAssistSyncWxPanel) window.aiAssistSyncWxPanel(); }, 150);
                 }
+            };
+
+            // --- WEATHER INTEL PANEL LOGIC ---
+            const wxPanel = document.getElementById('aiassist-wx-panel');
+
+            window.aiAssistSyncWxPanel = function () {
+                if (!wxPanel || !svPip || svPip.classList.contains('hidden')) return;
+                const pipRect = svPip.getBoundingClientRect();
+                wxPanel.style.position = 'fixed';
+                wxPanel.style.bottom = 'auto';
+                wxPanel.style.right = 'auto';
+                wxPanel.style.left = pipRect.left + 'px';
+                wxPanel.style.top = (pipRect.top - wxPanel.offsetHeight) + 'px';
+                wxPanel.style.width = pipRect.width + 'px';
+            };
+
+            window.aiAssistFetchWeather = async function (lat, lng) {
+                const wxContent = document.getElementById('aiassist-wx-content');
+                const wxCoords = document.getElementById('aiassist-wx-coords');
+                if (!wxPanel) return;
+
+                wxPanel.classList.remove('hidden');
+                wxPanel.style.display = 'block';
+                if (wxCoords) wxCoords.textContent = lat.toFixed(4) + ', ' + lng.toFixed(4);
+                if (wxContent) wxContent.innerHTML = '<div style="padding:8px;text-align:center;color:rgba(255,255,255,0.3);font-size:8px;">FETCHING WEATHER DATA...</div>';
+                setTimeout(function () { window.aiAssistSyncWxPanel(); }, 120);
+
+                try {
+                    const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lng + '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,apparent_temperature,surface_pressure&timezone=auto');
+                    const data = await res.json();
+                    const c = data.current;
+                    const weatherCodes = {
+                        0:'CLEAR SKY',1:'MAINLY CLEAR',2:'PARTLY CLOUDY',3:'OVERCAST',
+                        45:'FOG',48:'RIME FOG',51:'LIGHT DRIZZLE',53:'MOD DRIZZLE',55:'DENSE DRIZZLE',
+                        61:'SLIGHT RAIN',63:'MOD RAIN',65:'HEAVY RAIN',66:'FREEZING RAIN',67:'HEAVY FREEZING RAIN',
+                        71:'SLIGHT SNOW',73:'MOD SNOW',75:'HEAVY SNOW',77:'SNOW GRAINS',
+                        80:'SLIGHT SHOWERS',81:'MOD SHOWERS',82:'VIOLENT SHOWERS',
+                        85:'SLIGHT SNOW SHOWERS',86:'HEAVY SNOW SHOWERS',
+                        95:'THUNDERSTORM',96:'HAIL THUNDERSTORM',99:'HEAVY HAIL THUNDERSTORM'
+                    };
+                    var condition = weatherCodes[c.weather_code] || ('CODE_' + c.weather_code);
+                    if (wxContent) {
+                        wxContent.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">'
+                            + '<div style="background:rgba(0,0,0,0.3);padding:5px 6px;text-align:center;"><div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.1em;">TEMP</div><div style="font-size:11px;color:#34d399;font-weight:700;margin-top:2px;">' + c.temperature_2m + '\u00B0C</div></div>'
+                            + '<div style="background:rgba(0,0,0,0.3);padding:5px 6px;text-align:center;"><div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.1em;">FEELS</div><div style="font-size:11px;color:#fbbf24;font-weight:700;margin-top:2px;">' + c.apparent_temperature + '\u00B0C</div></div>'
+                            + '<div style="background:rgba(0,0,0,0.3);padding:5px 6px;text-align:center;"><div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.1em;">HUMIDITY</div><div style="font-size:11px;color:#60a5fa;font-weight:700;margin-top:2px;">' + c.relative_humidity_2m + '%</div></div>'
+                            + '<div style="background:rgba(0,0,0,0.3);padding:5px 6px;text-align:center;"><div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.1em;">WIND</div><div style="font-size:11px;color:#c084fc;font-weight:700;margin-top:2px;">' + c.wind_speed_10m + ' km/h</div></div>'
+                            + '<div style="background:rgba(0,0,0,0.3);padding:5px 6px;text-align:center;grid-column:span 2;"><div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.1em;">CONDITION</div><div style="font-size:11px;color:#f472b6;font-weight:700;margin-top:2px;">' + condition + '</div></div>'
+                            + '<div style="background:rgba(0,0,0,0.3);padding:5px 6px;text-align:center;grid-column:span 3;"><div style="font-size:7px;color:rgba(255,255,255,0.3);letter-spacing:0.1em;">PRESSURE</div><div style="font-size:11px;color:#94a3b8;font-weight:700;margin-top:2px;">' + c.surface_pressure + ' hPa</div></div>'
+                            + '</div>';
+                    }
+                    setTimeout(function () { window.aiAssistSyncWxPanel(); }, 50);
+                } catch (err) {
+                    if (wxContent) wxContent.innerHTML = '<div style="padding:8px;text-align:center;color:rgba(239,68,68,0.6);font-size:8px;">WEATHER DATA UNAVAILABLE</div>';
+                    setTimeout(function () { window.aiAssistSyncWxPanel(); }, 50);
+                }
+            };
+
+            window.aiAssistToggleWxPanel = function () {
+                var body = document.getElementById('aiassist-wx-body');
+                var icon = document.getElementById('aiassist-wx-toggle-icon');
+                if (!body) return;
+                if (body.style.display === 'none') {
+                    body.style.display = 'block';
+                    if (icon) { icon.classList.remove('ph-caret-up'); icon.classList.add('ph-caret-down'); }
+                } else {
+                    body.style.display = 'none';
+                    if (icon) { icon.classList.remove('ph-caret-down'); icon.classList.add('ph-caret-up'); }
+                }
+                setTimeout(function () { window.aiAssistSyncWxPanel(); }, 50);
             };
 
             window.aiAssistCloseStreetView = function () {
@@ -6213,10 +6332,65 @@
                         if (iframe) iframe.src = '';
                     }, 300);
                 }
+                if (wxPanel) {
+                    wxPanel.classList.add('hidden');
+                    wxPanel.style.display = 'none';
+                }
             };
 
         })();
 
+    </script>
+
+    <!-- Dashboard Zoom (Ctrl+Plus / Ctrl+Minus / Ctrl+0) -->
+    <script>
+        (function () {
+            let dashboardZoom = 1.0;
+            const ZOOM_STEP = 0.1;
+            const ZOOM_MIN = 0.5;
+            const ZOOM_MAX = 2.0;
+
+            function applyDashboardZoom() {
+                document.body.style.transformOrigin = 'top left';
+                document.body.style.transform = 'scale(' + dashboardZoom + ')';
+                document.body.style.width = (100 / dashboardZoom) + '%';
+                document.body.style.height = (100 / dashboardZoom) + '%';
+            }
+
+            document.addEventListener('keydown', function (e) {
+                // Ctrl + Plus or Ctrl + =
+                if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
+                    e.preventDefault();
+                    dashboardZoom = Math.min(ZOOM_MAX, Math.round((dashboardZoom + ZOOM_STEP) * 100) / 100);
+                    applyDashboardZoom();
+                }
+                // Ctrl + Minus
+                if (e.ctrlKey && (e.key === '-' || e.key === '_')) {
+                    e.preventDefault();
+                    dashboardZoom = Math.max(ZOOM_MIN, Math.round((dashboardZoom - ZOOM_STEP) * 100) / 100);
+                    applyDashboardZoom();
+                }
+                // Ctrl + 0 → reset
+                if (e.ctrlKey && e.key === '0') {
+                    e.preventDefault();
+                    dashboardZoom = 1.0;
+                    applyDashboardZoom();
+                }
+            });
+
+            // Also handle Ctrl + mouse wheel
+            document.addEventListener('wheel', function (e) {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        dashboardZoom = Math.min(ZOOM_MAX, Math.round((dashboardZoom + ZOOM_STEP) * 100) / 100);
+                    } else {
+                        dashboardZoom = Math.max(ZOOM_MIN, Math.round((dashboardZoom - ZOOM_STEP) * 100) / 100);
+                    }
+                    applyDashboardZoom();
+                }
+            }, { passive: false });
+        })();
     </script>
 </body>
 
